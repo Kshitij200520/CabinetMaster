@@ -4,10 +4,12 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import { useDesignStore } from "@/store/design";
 import { colourValue } from "@/lib/catalog";
+import { getCameraPreset } from "@/lib/camera";
 import { Cabinet as CabinetModel, CameraAngle, KitchenDesign, LightingMood } from "@/lib/types";
 import { createSurfaceTexture, getCabinetTextureKind, getCountertopTextureKind, getHardwareTextureKind, SurfaceTextureKind } from "@/lib/surfaceTextures";
 import { FrontSide, MathUtils, type CanvasTexture, type Group } from "three";
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
+import { Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 
 interface SceneTextures {
   oak: CanvasTexture;
@@ -280,29 +282,35 @@ function getCountertopRuns(cabinets: CabinetModel[]): { runs: CountertopRun[]; c
   return { runs, corners };
 }
 
-function CameraPreset({ angle, length, width, ceiling }: { angle: CameraAngle; length: number; width: number; ceiling: number }) {
+function CameraPreset({ preset, resetKey, controlsRef }: {
+  preset: ReturnType<typeof getCameraPreset>;
+  resetKey: number;
+  controlsRef: RefObject<OrbitControlsImpl | null>;
+}) {
   const { camera } = useThree();
   useEffect(() => {
-    const positions: Record<CameraAngle, [number, number, number]> = {
-      perspective: [0, ceiling * 0.68, width * 1.15],
-      "front-elevation": [0, Math.min(ceiling * 0.55, 5.5), width * 1.15],
-      "top-floor-plan": [0, Math.max(length, width) * 1.15, 0.01],
-      "close-up-hardware": [length * 0.08, 3.3, width * 0.3],
-    };
-    camera.position.set(...positions[angle]);
-    camera.lookAt(0, angle === "top-floor-plan" ? 0 : 2, 0);
+    camera.position.set(...preset.position);
+    const controls = controlsRef.current;
+    if (controls) {
+      controls.target.set(...preset.target);
+      controls.update();
+      controls.saveState();
+    } else {
+      camera.lookAt(...preset.target);
+    }
     camera.updateProjectionMatrix();
-  }, [angle, camera, ceiling, length, width]);
+  }, [camera, controlsRef, preset, resetKey]);
   return null;
 }
 
-function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, doorsOpen, cameraAngle }: {
+function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, doorsOpen, cameraAngle, cameraResetKey }: {
   design: KitchenDesign;
   selectedCabinetId: string | null;
   setSelectedCabinetId: (id: string | null) => void;
   mood: LightingMood;
   doorsOpen: boolean;
   cameraAngle: CameraAngle;
+  cameraResetKey: number;
 }) {
   const textures = useMemo<SceneTextures>(() => ({
     oak: createSurfaceTexture("oak"),
@@ -320,6 +328,11 @@ function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, d
   const roomWidth = design.measurements.width / 12;
   const wallHeight = design.measurements.wallHeight / 12;
   const ceilingHeight = design.measurements.ceilingHeight / 12;
+  const cameraPreset = useMemo(
+    () => getCameraPreset(cameraAngle, roomLength, roomWidth, ceilingHeight),
+    [cameraAngle, ceilingHeight, roomLength, roomWidth],
+  );
+  const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const countertopTop = 34 / 12 + 0.04;
   const countertopThickness = 0.11;
   const countertopTexture = textureFor(getCountertopTextureKind(design.countertop), textures);
@@ -483,18 +496,19 @@ function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, d
           </group>
         )}
 
-        <CameraPreset angle={cameraAngle} length={roomLength} width={roomWidth} ceiling={ceilingHeight} />
-        <OrbitControls makeDefault enablePan enableZoom enableRotate minDistance={4} maxDistance={Math.max(roomLength, roomWidth) * 1.8} target={cameraAngle === "top-floor-plan" ? [0, 0, 0] : [0, 2, 0]} />
+        <CameraPreset preset={cameraPreset} resetKey={cameraResetKey} controlsRef={controlsRef} />
+        <OrbitControls ref={controlsRef} makeDefault enablePan enableZoom enableRotate minDistance={4} maxDistance={Math.max(roomLength, roomWidth) * 1.8} target={cameraPreset.target} />
         <ContactShadows position={[0, 0.01, 0]} opacity={0.32} scale={Math.max(roomLength, roomWidth) * 1.5} blur={2.4} far={6} />
       </Suspense>
     </>
   );
 }
 
-export default function Kitchen3D({ mood = "daylight", doorsOpen = false, cameraAngle = "perspective" }: {
+export default function Kitchen3D({ mood = "daylight", doorsOpen = false, cameraAngle = "perspective", cameraResetKey = 0 }: {
   mood?: LightingMood;
   doorsOpen?: boolean;
   cameraAngle?: CameraAngle;
+  cameraResetKey?: number;
 }) {
   const design = useDesignStore((state) => state.design);
   const selectedCabinetId = useDesignStore((state) => state.selectedCabinetId);
@@ -512,6 +526,7 @@ export default function Kitchen3D({ mood = "daylight", doorsOpen = false, camera
           mood={mood}
           doorsOpen={doorsOpen}
           cameraAngle={cameraAngle}
+          cameraResetKey={cameraResetKey}
         />
       </Canvas>
     </div>

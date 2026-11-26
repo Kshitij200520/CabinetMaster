@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cabinetsOverlap, validateMeasurements, recommendCabinets } from "@/lib/recommendation";
 import { calculateQuote, cabinetUnitPrice } from "@/lib/pricing";
+import { getCameraPreset } from "@/lib/camera";
 import { KitchenDesign } from "@/lib/types";
 import { formatINR } from "@/lib/currency";
 import { kitchenDesignSchema } from "@/lib/validation";
@@ -21,6 +22,19 @@ const design: KitchenDesign = {
   appliances: { sink: true, faucet: true, cooktop: true, hood: true, refrigerator: true, oven: true },
   accessories: ["Lighting"],
 };
+
+describe("3D camera presets", () => {
+  it("uses a centered three-quarter perspective and a floor-centered top view", () => {
+    const perspective = getCameraPreset("perspective", 12, 10, 9);
+    expect(perspective.position[1]).toBeCloseTo(6.12);
+    expect(perspective.position[2]).toBeCloseTo(11.5);
+    expect(perspective.target).toEqual([0, 2.2, 0]);
+
+    const top = getCameraPreset("top-floor-plan", 12, 10, 9);
+    expect(top.position[1]).toBeCloseTo(13.8);
+    expect(top.target).toEqual([0, 0, 0]);
+  });
+});
 
 describe("measurement validation", () => {
   it("rejects invalid dimensions", () => {

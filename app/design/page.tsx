@@ -1,14 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Activity, ArrowLeft, ArrowRight, Camera, Download, Eye, Lightbulb, LoaderCircle, Maximize2, Moon, Plus, RotateCcw, Save, Sparkles, Sun, Trash2, X } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import FloorPlan from "@/components/FloorPlan";
 import { useDesignStore } from "@/store/design";
 import { calculateQuote } from "@/lib/pricing";
@@ -44,6 +44,13 @@ type AdvisorRecommendation = Pick<KitchenDesign, "layout" | "doorStyle" | "colou
   estimatedTotalINR: number;
   withinBudget: boolean | null;
 };
+
+function DesignWorkspace() {
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
+
+  return <DesignPageContent key={queryString} queryString={queryString} />;
+}
 
 async function requestImageTo3D(payload: {
   imageUrl?: string;
@@ -89,13 +96,14 @@ function DoorPreview({ name, active, colour }: { name: string; active: boolean; 
   );
 }
 
-export default function DesignPage() {
+function DesignPageContent({ queryString }: { queryString: string }) {
   const router = useRouter();
   const { design, setLayout, setMeasurements, setDesign, applyPreset, selectedCabinetId, setSelectedCabinetId, updateCabinet, addCabinet, removeCabinet } = useDesignStore();
   const [step, setStep] = useState(0);
   const [view, setView] = useState<"3d" | "2d" | "materials">("3d");
   const [lightingMood, setLightingMood] = useState<LightingMood>("daylight");
   const [cameraAngle, setCameraAngle] = useState<CameraAngle>("perspective");
+  const [cameraResetKey, setCameraResetKey] = useState(0);
   const [doorsOpen, setDoorsOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedDesignId, setSavedDesignId] = useState("");
@@ -120,6 +128,15 @@ export default function DesignPage() {
   const [recommendation, setRecommendation] = useState<AdvisorRecommendation | null>(null);
   const [productRates, setProductRates] = useState<Partial<Record<Cabinet["category"], number>>>({});
   const measurementsRef = useRef(design.measurements);
+  const changeCameraAngle = useCallback((angle: CameraAngle) => {
+    setCameraAngle(angle);
+    setCameraResetKey((current) => current + 1);
+  }, []);
+  const resetCamera = useCallback(() => {
+    changeCameraAngle("perspective");
+    setDoorsOpen(false);
+    setView("3d");
+  }, [changeCameraAngle]);
   const quote = calculateQuote(design, productRates);
   const selectedCabinet = design.cabinetInventory.find((item) => item.id === selectedCabinetId);
   const errors = validateMeasurements(design.measurements.length, design.measurements.width, design.measurements.wallHeight, design.measurements.ceilingHeight);
@@ -130,12 +147,14 @@ export default function DesignPage() {
   );
 
   useEffect(() => {
-    const query = new URLSearchParams(window.location.search);
+    let active = true;
+    const query = new URLSearchParams(queryString);
     const designId = query.get("designId");
     if (designId) {
       fetch(`/api/designs/${encodeURIComponent(designId)}`, { cache: "no-store" })
         .then(async (response) => {
           const data = await response.json() as { design?: { config?: KitchenDesign; previewImage?: string; aiRenderImage?: string }; error?: string };
+          if (!active) return;
           if (response.status === 401) {
             router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
             return;
@@ -146,8 +165,10 @@ export default function DesignPage() {
           setRenderSnapshot(data.design.previewImage ?? "");
           setAiRenderImage(data.design.aiRenderImage ?? "");
         })
-        .catch((error: unknown) => setStatus(error instanceof Error ? error.message : "Unable to load saved design."));
-      return;
+        .catch((error: unknown) => {
+          if (active) setStatus(error instanceof Error ? error.message : "Unable to load saved design.");
+        });
+      return () => { active = false; };
     }
     const doorSlug = query.get("door");
     const presetSlug = query.get("preset");
@@ -193,6 +214,8 @@ export default function DesignPage() {
           return requestImageTo3D({ imageUrl, presetHint, measurements: measurementsRef.current });
         })
         .then((result) => {
+          if (!active) return;
+          resetCamera();
           setDesign(result.design);
           setSelectedCabinetId(null);
           setImageMatchNote(result.note);
@@ -201,13 +224,17 @@ export default function DesignPage() {
             : "AI image analysis is unavailable; a matching preset has been applied as a starting point.");
         })
         .catch((error: unknown) => {
+          if (!active) return;
           const message = error instanceof Error ? error.message : "Unable to build a 3D model from this image.";
           setImageModelError(message);
           setStatus(message);
         })
-        .finally(() => setImageModelLoading(false));
+        .finally(() => {
+          if (active) setImageModelLoading(false);
+        });
     }
-  }, [applyPreset, router, setDesign, setSelectedCabinetId]);
+    return () => { active = false; };
+  }, [applyPreset, queryString, resetCamera, router, setDesign, setSelectedCabinetId]);
 
   useEffect(() => {
     fetch("/api/products", { cache: "no-store" })
@@ -348,7 +375,7 @@ export default function DesignPage() {
       });
       setDesign(result.design);
       setSelectedCabinetId(null);
-      setView("3d");
+      resetCamera();
       setImageMatchNote(result.note);
       setStatus(result.source === "groq-vision"
         ? "Reference photo analyzed and applied to the live 3D model."
@@ -509,9 +536,31 @@ export default function DesignPage() {
 
         <section id="kitchen-viewport" className="relative min-h-[420px] bg-[#EEECE4]">
           <div className="absolute left-4 top-4 z-10 flex bg-white shadow-sm"><button onClick={() => setView("3d")} className={`px-4 py-2 text-xs ${view === "3d" ? "bg-[#292A27] text-white" : ""}`}>3D VIEW</button><button onClick={() => setView("2d")} className={`px-4 py-2 text-xs ${view === "2d" ? "bg-[#292A27] text-white" : ""}`}>2D PLAN</button><button onClick={() => setView("materials")} className={`px-4 py-2 text-xs ${view === "materials" ? "bg-[#292A27] text-white" : ""}`}>MATERIALS</button></div>
-          {view === "3d" && <Kitchen3D mood={lightingMood} doorsOpen={doorsOpen} cameraAngle={cameraAngle} />}
+          {view === "3d" && <Kitchen3D mood={lightingMood} doorsOpen={doorsOpen} cameraAngle={cameraAngle} cameraResetKey={cameraResetKey} />}
           {view === "2d" && <FloorPlan />}
           {view === "materials" && <MaterialStudio design={design} countertopRatePerSqFt={quote.countertopRatePerSqFt} handleUpgrade={quote.handleUpgrade} onTryIn3D={() => { setView("3d"); setStep(4); }} />}
+          {view === "3d" && (
+            <div role="group" aria-label="Camera presets" className="absolute right-4 top-[3.6rem] z-10 grid grid-cols-2 gap-1 bg-white/90 p-1 shadow-sm">
+              {([
+                ["perspective", "Perspective"],
+                ["front-elevation", "Front Elevation"],
+                ["top-floor-plan", "Top View"],
+              ] as const).map(([angle, label]) => (
+                <button
+                  key={angle}
+                  type="button"
+                  aria-pressed={cameraAngle === angle}
+                  onClick={() => changeCameraAngle(angle)}
+                  className={`px-3 py-2 text-[10px] ${cameraAngle === angle ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+              <button type="button" onClick={resetCamera} className="col-span-2 flex items-center justify-center gap-1 px-3 py-2 text-[10px] hover:bg-[#EFECE4]">
+                <RotateCcw size={12} /> Reset Camera
+              </button>
+            </div>
+          )}
           {view === "3d" && imageMatchNote && referenceImage && (
             <div className="absolute left-4 top-[3.6rem] z-10 flex max-w-[230px] items-center gap-3 border border-white/60 bg-white/95 p-2 shadow-sm" title={imageMatchNote}>
               <div className="relative h-12 w-14 shrink-0 overflow-hidden bg-[#E9E1D5]">
@@ -535,7 +584,7 @@ export default function DesignPage() {
             <div className="absolute right-4 top-4 z-10 rounded-full border border-white/60 bg-white/90 px-4 py-2 text-xs shadow-sm" title={workTriangle.tip}><span className="inline-flex items-center gap-2"><Activity size={14} /> Work Triangle: <b>{workTriangle.score}/100</b> {workTriangle.status}</span></div>
             <div className="absolute bottom-4 left-4 z-10 hidden gap-1 rounded bg-white/90 p-1 shadow-sm sm:flex">{([["daylight","Daylight",Sun],["warm-evening","Warm",Moon],["under-cabinet-led","LED",Lightbulb]] as const).map(([mood,label,Icon]) => <button key={mood} onClick={() => setLightingMood(mood)} aria-pressed={lightingMood === mood} title={`${label} lighting`} className={`flex items-center gap-1 px-2 py-2 text-[10px] ${lightingMood === mood ? "bg-[#292A27] text-white" : ""}`}><Icon size={13} />{label}</button>)}</div>
           </>}
-          <div className="absolute bottom-4 right-4 z-10 flex flex-wrap justify-end gap-2"><button onClick={() => setDoorsOpen((open) => !open)} className="flex items-center gap-2 bg-white px-3 py-2 text-xs shadow-sm" title="Inspect cabinet interiors"><Eye size={15} />{doorsOpen ? "Close doors" : "Open doors"}</button><button onClick={openRenderStudio} className="flex items-center gap-2 bg-[#292A27] px-3 py-2 text-xs text-white shadow-sm"><Camera size={15} /> Render Studio View</button><button onClick={() => setView("3d")} className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Reset view"><RotateCcw size={16} /></button><button className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Fullscreen" onClick={() => document.documentElement.requestFullscreen()}><Maximize2 size={16} /></button></div>
+          <div className="absolute bottom-4 right-4 z-10 flex flex-wrap justify-end gap-2"><button onClick={() => setDoorsOpen((open) => !open)} className="flex items-center gap-2 bg-white px-3 py-2 text-xs shadow-sm" title="Inspect cabinet interiors"><Eye size={15} />{doorsOpen ? "Close doors" : "Open doors"}</button><button onClick={openRenderStudio} className="flex items-center gap-2 bg-[#292A27] px-3 py-2 text-xs text-white shadow-sm"><Camera size={15} /> Render Studio View</button><button onClick={resetCamera} className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Reset camera angle and orbit controls" aria-label="Reset camera angle and orbit controls"><RotateCcw size={16} /></button><button className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Fullscreen" onClick={() => document.documentElement.requestFullscreen()}><Maximize2 size={16} /></button></div>
         </section>
 
         <aside className="min-w-0 overflow-x-hidden border-t border-[#D8D5CD] bg-white px-5 py-5 lg:border-l lg:border-t-0">
@@ -552,5 +601,13 @@ export default function DesignPage() {
       {saved && <div className="fixed bottom-20 right-5 z-50 bg-[#292A27] px-5 py-3 text-sm text-white lg:bottom-5">Draft saved</div>}
       {renderOpen && <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="render-studio-title"><div className="max-h-[92vh] w-full max-w-5xl overflow-auto bg-[#F7F5F0] p-5 md:p-7"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[0.24em] text-[#77796F]">Cabinet Studio · Architectural preview</p><h2 id="render-studio-title" className="mt-1 font-serif text-3xl">Render Studio View</h2><p className="mt-2 text-sm text-[#77796F]">{activePreset?.name ?? "Custom kitchen"} · {design.layout.toUpperCase()} · {design.doorStyle} · {design.colour} · {design.countertop} · {formatINR(quote.grandTotal)}</p></div><button onClick={() => setRenderOpen(false)} aria-label="Close render preview" className="grid h-9 w-9 place-items-center border border-[#D8D5CD]"><X size={18} /></button></div><div className="relative mt-5 aspect-[16/8] overflow-hidden bg-[#dedbd3]">{aiRenderImage ? <Image src={aiRenderImage} alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"} fill unoptimized sizes="(max-width: 768px) 100vw, 900px" className="object-cover" /> : <div className="absolute inset-0 grid place-items-center bg-[#E9E1D5] p-8 text-center text-sm text-[#6D6F68]">{renderLoading ? <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview…</span> : "Create a preview to compare it with your live 3D model."}</div>}{renderSnapshot && <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - renderSplit}% 0 0)` }}><Image src={renderSnapshot} alt="Captured live 3D CAD kitchen model" fill unoptimized sizes="(max-width: 768px) 100vw, 900px" className="object-cover" /></div>}{aiRenderImage && <><div className="absolute inset-y-0 w-0.5 bg-white shadow" style={{ left: `${renderSplit}%` }} /><span className="absolute right-3 top-3 bg-[#292A27]/85 px-3 py-2 text-[10px] text-white">{renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}</span></>}<span className="absolute left-3 top-3 bg-[#292A27]/85 px-3 py-2 text-[10px] text-white">LIVE 3D CAD MODEL</span></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs font-semibold uppercase tracking-wider">Before / after comparison<div className="mt-2 flex items-center gap-3"><span>3D</span><input type="range" min="0" max="100" value={renderSplit} onChange={(event) => setRenderSplit(Number(event.target.value))} className="w-full accent-[#694A36]" /><span>Preview</span></div></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeRenderInQuote} onChange={(event) => setIncludeRenderInQuote(event.target.checked)} /> Include render in PDF</label></div><div className="mt-5 flex flex-wrap gap-3"><button onClick={() => void generateStudioRender()} disabled={renderLoading} className="inline-flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs disabled:opacity-50"><Camera size={14} /> {renderLoading ? "Rendering…" : "Regenerate Render"}</button><button onClick={saveRenderToDesign} disabled={!aiRenderImage} className="bg-[#292A27] px-4 py-3 text-xs text-white disabled:opacity-50">Save Render to Design & PDF Quote</button></div><p className="mt-4 text-xs leading-5 text-[#77796F]">{status || "Cloudflare Workers AI renders may differ slightly from the live 3D model. Curated previews are shown if rendering is unavailable."}</p></div></div>}
     </main>
+  );
+}
+
+export default function DesignPage() {
+  return (
+    <Suspense fallback={<main className="grid min-h-screen place-items-center bg-[#F7F5F0] text-sm text-[#77796F]">Loading kitchen designer…</main>}>
+      <DesignWorkspace />
+    </Suspense>
   );
 }
