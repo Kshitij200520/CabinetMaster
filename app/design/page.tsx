@@ -142,6 +142,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const wideCaptureRef = useRef<(() => string) | null>(null);
   const quoteFormSectionRef = useRef<HTMLDivElement | null>(null);
   const quoteHighlightTimerRef = useRef<number | null>(null);
+  const mobileStepRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const [quoteHighlighted, setQuoteHighlighted] = useState(false);
   const [quoteFocusSeq, setQuoteFocusSeq] = useState(0);
   const registerWideCapture = useCallback((fn: (() => string) | null) => {
@@ -547,6 +548,12 @@ function DesignPageContent({ queryString }: { queryString: string }) {
     return () => window.cancelAnimationFrame(frame);
   }, [quoteFocusSeq, step]);
 
+  useEffect(() => {
+    const activePill = mobileStepRefs.current[step];
+    if (!activePill || activePill.offsetParent === null) return;
+    activePill.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [step]);
+
   useEffect(() => () => {
     if (quoteHighlightTimerRef.current) window.clearTimeout(quoteHighlightTimerRef.current);
   }, []);
@@ -566,12 +573,33 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   };
 
   const steps = ["Layout", "Measurements", "Cabinet Style", "Materials", "Visualizer", "Cabinets", "Quote"];
+  const mobileSteps = ["Layout", "Measurements", "Style", "Materials", "Visualizer", "Cabinets", "Quote"];
   return (
     <main className="min-h-screen min-w-0 w-full bg-[#F7F5F0]">
-      <header className="flex h-16 items-center justify-between border-b border-[#D8D5CD] px-4 md:px-8">
-        <Link href="/" className="font-serif text-lg tracking-[0.14em]">CABINET STUDIO</Link>
-        <div className="hidden items-center gap-1 md:flex">{steps.map((name, index) => <button key={name} onClick={() => setStep(index)} className={`px-3 py-2 text-xs ${index === step ? "border-b-2 border-[#292A27] font-semibold" : "text-[#77796F]"}`}>{index + 1}. {name}</button>)}</div>
-        <button onClick={saveDesign} className="flex shrink-0 items-center gap-2 whitespace-nowrap px-2 text-sm"><Save size={16} /> Save</button>
+      <header className="sticky top-0 z-30 border-b border-[#D8D5CD] bg-[#F7F5F0]">
+        <div className="flex h-16 items-center justify-between px-4 md:px-8">
+          <Link href="/" className="font-serif text-lg tracking-[0.14em]">CABINET STUDIO</Link>
+          <div className="hidden items-center gap-1 lg:flex">{steps.map((name, index) => <button key={name} onClick={() => setStep(index)} className={`px-3 py-2 text-xs ${index === step ? "border-b-2 border-[#292A27] font-semibold" : "text-[#77796F]"}`}>{index + 1}. {name}</button>)}</div>
+          <button onClick={saveDesign} className="flex shrink-0 items-center gap-2 whitespace-nowrap px-2 text-sm"><Save size={16} /> Save</button>
+        </div>
+        <nav aria-label="Design steps" className="no-scrollbar flex gap-2 overflow-x-auto border-t border-[#E9E1D5] bg-[#F6F3ED] px-3 py-2 lg:hidden">
+          {mobileSteps.map((name, index) => (
+            <button
+              key={name}
+              ref={(el) => { mobileStepRefs.current[index] = el; }}
+              type="button"
+              aria-current={index === step ? "step" : undefined}
+              onClick={() => setStep(index)}
+              className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1.5 text-xs transition-colors ${
+                index === step
+                  ? "bg-[#272824] font-medium text-white"
+                  : "border border-[#D8D5CD] bg-white text-[#6D6F68] hover:text-[#272824]"
+              }`}
+            >
+              {index + 1}. {name}
+            </button>
+          ))}
+        </nav>
       </header>
 
       <div className="grid min-w-0 grid-cols-1 min-h-[calc(100vh-64px)] lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(280px,300px)]">
@@ -588,7 +616,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
             <div
               id="quote-form-section"
               ref={quoteFormSectionRef}
-              className={`scroll-mt-20 pb-24 transition-shadow duration-300 lg:pb-0 ${
+              className={`scroll-mt-32 pb-24 transition-shadow duration-300 lg:scroll-mt-20 lg:pb-0 ${
                 quoteHighlighted ? "rounded-sm ring-2 ring-[#B38B62]/60 ring-offset-8 ring-offset-white" : ""
               }`}
             >
