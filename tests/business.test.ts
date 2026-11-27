@@ -5,7 +5,7 @@ import { getCameraPreset, computeWideKitchenFraming } from "@/lib/camera";
 import { KitchenDesign } from "@/lib/types";
 import { formatINR } from "@/lib/currency";
 import { kitchenDesignSchema } from "@/lib/validation";
-import { cloudflareImageDataUrl, createCloudflareRenderForm, curatedStudioRender } from "@/lib/studio-render";
+import { bufferToImageDataUrl, buildArchitecturalRenderPrompt, buildSimplifiedRenderPrompt, cloudflareImageDataUrl } from "@/lib/studio-render";
 import { applyImageHint, fallbackImageDesign, imageAnalysisToDesign } from "@/lib/image-to-3d";
 import { publicAuthError } from "@/lib/auth";
 
@@ -249,25 +249,18 @@ describe("image-to-3D design mapping", () => {
 });
 
 describe("studio render providers", () => {
-  it("sends the captured 3D snapshot to Cloudflare as a multipart reference image", async () => {
-    const bytes = Buffer.from("live 3D snapshot");
-    const form = createCloudflareRenderForm(
-      "Preserve the exact kitchen model.",
-      `data:image/jpeg;base64,${bytes.toString("base64")}`,
-    );
-    const image = form.get("input_image_0");
+  it("builds wide-angle architectural and simplified prompts matching the 3D kitchen design", () => {
+    const prompt = buildArchitecturalRenderPrompt(design, "daylight", "L-shaped warm white slim shaker kitchen with tall pantry on left wall.");
+    expect(prompt).toContain("L-shaped corner kitchen");
+    expect(prompt).toContain("Warm White");
+    expect(prompt).toContain("Slim Shaker");
+    expect(prompt).toContain("no kitchen island");
+    expect(prompt).toContain("tall pantry on left wall");
 
-    expect(form.get("prompt")).toBe("Preserve the exact kitchen model.");
-    expect(image).toBeInstanceOf(Blob);
-    if (!(image instanceof Blob)) throw new Error("Cloudflare reference image was not attached.");
-    expect(image.type).toBe("image/jpeg");
-    expect(Buffer.from(await image.arrayBuffer())).toEqual(bytes);
-    expect(form.get("width")).toBe("1024");
-    expect(form.get("height")).toBe("768");
-  });
-
-  it("rejects prompts that exceed the image model limit", () => {
-    expect(() => createCloudflareRenderForm("x".repeat(2049), "data:image/jpeg;base64,YQ==")).toThrow("too long");
+    const simplified = buildSimplifiedRenderPrompt(design, "warm-evening");
+    expect(simplified).toContain("L-shaped corner kitchen");
+    expect(simplified).toContain("warm evening");
+    expect(simplified.length).toBeLessThan(prompt.length);
   });
 
   it("converts a successful Cloudflare image response into a PNG data URL", () => {
@@ -284,11 +277,11 @@ describe("studio render providers", () => {
     expect(() => cloudflareImageDataUrl({ success: false, errors: [{ message: "rate limited" }] })).toThrow();
   });
 
-  it("returns locally curated previews for the selected finish", async () => {
-    const walnut = await curatedStudioRender({ colour: "American Walnut", doorStyle: "Flat Slab" });
-    const oak = await curatedStudioRender({ colour: "Natural Oak", doorStyle: "Slim Shaker" });
-    expect(walnut).toMatch(/^data:image\/jpeg;base64,/);
-    expect(oak).toMatch(/^data:image\/jpeg;base64,/);
-    expect(walnut).not.toBe(oak);
+  it("converts binary JPEG and PNG buffers from fallback providers into data URLs", () => {
+    const jpegBuf = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+    const pngBuf = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+    expect(bufferToImageDataUrl(jpegBuf)).toMatch(/^data:image\/jpeg;base64,/);
+    expect(bufferToImageDataUrl(pngBuf)).toMatch(/^data:image\/png;base64,/);
+    expect(() => bufferToImageDataUrl(Buffer.from('{"error":"bad"}'), "application/json")).toThrow();
   });
 });

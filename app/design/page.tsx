@@ -46,6 +46,13 @@ type AdvisorRecommendation = Pick<KitchenDesign, "layout" | "doorStyle" | "colou
   withinBudget: boolean | null;
 };
 
+const RENDER_PROVIDER_LABELS = {
+  "cloudflare-workers-ai": "CLOUDFLARE AI RENDER",
+  "huggingface-flux": "HUGGING FACE AI RENDER",
+  "pollinations-flux": "POLLINATIONS AI RENDER",
+  "studio-cad-hd": "STUDIO CAD HD SNAPSHOT",
+} as const;
+
 function DesignWorkspace() {
   const searchParams = useSearchParams();
   const queryString = searchParams.toString();
@@ -116,7 +123,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [renderSnapshot, setRenderSnapshot] = useState("");
   const [aiRenderImage, setAiRenderImage] = useState("");
-  const [renderSource, setRenderSource] = useState<"cloudflare-workers-ai" | "curated-fallback" | "">("");
+  const [renderSource, setRenderSource] = useState<"cloudflare-workers-ai" | "huggingface-flux" | "pollinations-flux" | "studio-cad-hd" | "">("");
   const [renderLoading, setRenderLoading] = useState(false);
   const [renderSplit, setRenderSplit] = useState(50);
   const [includeRenderInQuote, setIncludeRenderInQuote] = useState(false);
@@ -264,7 +271,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
     const image = document.createElement("img");
     image.src = snapshot;
     await image.decode();
-    const scale = Math.min(1, 511 / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, 1024 / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     const imageWidth = Math.max(1, Math.round(image.naturalWidth * scale));
     const imageHeight = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -432,18 +439,31 @@ function DesignPageContent({ queryString }: { queryString: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ snapshotBase64: renderReference, design, cameraAngle, lightingMood }),
       });
-      const data = await response.json() as { aiRenderImage?: string; renderSource?: "cloudflare-workers-ai" | "curated-fallback"; error?: string };
+      const data = await response.json() as {
+        imageUrl?: string;
+        aiRenderImage?: string;
+        provider?: "cloudflare-workers-ai" | "huggingface-flux" | "pollinations-flux" | "studio-cad-hd";
+        renderSource?: "cloudflare-workers-ai" | "huggingface-flux" | "pollinations-flux" | "studio-cad-hd";
+        notice?: string;
+        error?: string;
+      };
       if (response.status === 401) {
         redirectForLogin();
         return;
       }
-      if (!response.ok || !data.aiRenderImage) throw new Error(data.error || "Unable to generate the architectural render.");
-      setAiRenderImage(data.aiRenderImage);
-      const source = data.renderSource ?? "curated-fallback";
-      setRenderSource(source);
-      setStatus(source === "curated-fallback"
-        ? "Cloudflare render is unavailable; showing a curated kitchen preview that you can still save."
-        : "Cloudflare Workers AI created an image-to-image render from your captured 3D kitchen model.");
+      const resolvedImage = data.imageUrl ?? data.aiRenderImage;
+      if (!response.ok || !resolvedImage) throw new Error(data.error || "Unable to generate the architectural render.");
+      const provider = data.provider ?? data.renderSource ?? "cloudflare-workers-ai";
+      setAiRenderImage(resolvedImage);
+      setRenderSource(provider);
+      setStatus(
+        data.notice
+          || (provider === "huggingface-flux"
+            ? "Hugging Face FLUX generated an architectural render from your wide 3D kitchen model."
+            : provider === "pollinations-flux"
+              ? "Pollinations FLUX generated an architectural render from your wide 3D kitchen model."
+              : "Cloudflare Workers AI generated an architectural render from your wide 3D kitchen model."),
+      );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to generate the architectural render.");
     } finally {
@@ -752,14 +772,14 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                   >
                     <Image
                       src={aiRenderImage}
-                      alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+                      alt="Cloudflare AI architectural render based on the current kitchen design"
                       fill
                       unoptimized
                       sizes="(max-width: 768px) 100vw, 960px"
                       className="object-contain"
                     />
                     <span className="pointer-events-none absolute right-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">
-                      {renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}
+                      {RENDER_PROVIDER_LABELS[renderSource || "cloudflare-workers-ai"]}
                     </span>
                     <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white opacity-95 transition group-hover:bg-[#292A27]">
                       <ZoomIn size={12} /> Tap or click to zoom
@@ -770,7 +790,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                     {renderLoading ? (
                       <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview from full-room framing…</span>
                     ) : (
-                      "Create a preview to view your full architectural kitchen render."
+                      status || "Create a preview to view your full architectural kitchen render."
                     )}
                   </div>
                 )}
@@ -781,7 +801,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                   {aiRenderImage ? (
                     <Image
                       src={aiRenderImage}
-                      alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+                      alt="Cloudflare AI architectural render based on the current kitchen design"
                       fill
                       unoptimized
                       sizes="(max-width: 768px) 100vw, 960px"
@@ -790,7 +810,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                     />
                   ) : (
                     <div className="absolute inset-0 grid place-items-center bg-[#E9E1D5] p-8 text-center text-sm text-[#6D6F68]">
-                      {renderLoading ? <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview…</span> : "Create a preview to compare it with your live 3D model."}
+                      {renderLoading ? <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview…</span> : (status || "Create a preview to compare it with your live 3D model.")}
                     </div>
                   )}
                   {renderSnapshot && (
@@ -801,7 +821,9 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                   {aiRenderImage && (
                     <>
                       <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow" style={{ left: `${renderSplit}%` }} />
-                      <span className="pointer-events-none absolute right-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">{renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}</span>
+                      <span className="pointer-events-none absolute right-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">
+                        {RENDER_PROVIDER_LABELS[renderSource || "cloudflare-workers-ai"]}
+                      </span>
                     </>
                   )}
                   <span className="pointer-events-none absolute left-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">LIVE 3D CAD MODEL</span>
@@ -821,7 +843,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
                 <button onClick={saveRenderToDesign} disabled={!aiRenderImage} className="bg-[#292A27] px-4 py-3 text-xs text-white disabled:opacity-50">Save Render to Design &amp; PDF Quote</button>
               </div>
             </div>
-            <p className="mt-4 text-xs leading-5 text-[#77796F]">{status || "Cloudflare Workers AI renders may differ slightly from the live 3D model. Curated previews are shown if rendering is unavailable."}</p>
+            <p className="mt-4 text-xs leading-5 text-[#77796F]">{status || "Cloudflare Workers AI renders are generated from your wide full-room 3D kitchen model."}</p>
           </div>
         </div>
       )}
@@ -829,7 +851,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
         <RenderLightbox
           open={lightboxOpen}
           imageSrc={aiRenderImage}
-          alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+          alt="Cloudflare AI architectural render based on the current kitchen design"
           title={`${activePreset?.name ?? "Custom kitchen"} · ${design.layout.toUpperCase()} Architectural Render`}
           onClose={() => setLightboxOpen(false)}
         />
