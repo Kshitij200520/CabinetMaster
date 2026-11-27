@@ -7,9 +7,10 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Activity, ArrowLeft, ArrowRight, Camera, ChevronDown, Download, Eye, Lightbulb, LoaderCircle, Maximize2, Moon, Plus, RotateCcw, Save, Sparkles, Sun, Trash2, X } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, Camera, ChevronDown, Download, Eye, Lightbulb, LoaderCircle, Maximize2, Moon, Plus, RotateCcw, Save, Sparkles, Sun, Trash2, X, ZoomIn } from "lucide-react";
 import Link from "next/link";
 import FloorPlan from "@/components/FloorPlan";
+import RenderLightbox from "@/components/RenderLightbox";
 import { useDesignStore } from "@/store/design";
 import { calculateQuote } from "@/lib/pricing";
 import { backsplashes, cabinetColours, countertops, doorStyles, finishes, handles } from "@/lib/catalog";
@@ -111,6 +112,8 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const [status, setStatus] = useState("");
   const [cabinetStatus, setCabinetStatus] = useState("");
   const [renderOpen, setRenderOpen] = useState(false);
+  const [renderTab, setRenderTab] = useState<"full" | "compare">("full");
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [renderSnapshot, setRenderSnapshot] = useState("");
   const [aiRenderImage, setAiRenderImage] = useState("");
   const [renderSource, setRenderSource] = useState<"cloudflare-workers-ai" | "curated-fallback" | "">("");
@@ -129,6 +132,10 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const [recommendation, setRecommendation] = useState<AdvisorRecommendation | null>(null);
   const [productRates, setProductRates] = useState<Partial<Record<Cabinet["category"], number>>>({});
   const measurementsRef = useRef(design.measurements);
+  const wideCaptureRef = useRef<(() => string) | null>(null);
+  const registerWideCapture = useCallback((fn: (() => string) | null) => {
+    wideCaptureRef.current = fn;
+  }, []);
   const changeCameraAngle = useCallback((angle: CameraAngle) => {
     setCameraAngle(angle);
     setCameraResetKey((current) => current + 1);
@@ -399,7 +406,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
     let snapshot = "";
     let renderReference = "";
     try {
-      snapshot = captureSnapshot();
+      snapshot = wideCaptureRef.current ? wideCaptureRef.current() : captureSnapshot();
       if (snapshot) renderReference = await createRenderReference(snapshot);
     }
     catch {
@@ -412,6 +419,8 @@ function DesignPageContent({ queryString }: { queryString: string }) {
     }
     setRenderSnapshot(snapshot);
     setRenderSplit(50);
+    setRenderTab("full");
+    setLightboxOpen(false);
     setRenderOpen(true);
     setRenderLoading(true);
     setAiRenderImage("");
@@ -541,7 +550,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
             view === "materials" ? "h-auto" : "h-[55vh] overflow-hidden lg:h-auto"
           }`}
         >
-          {view === "3d" && <Kitchen3D mood={lightingMood} doorsOpen={doorsOpen} cameraAngle={cameraAngle} cameraResetKey={cameraResetKey} />}
+          {view === "3d" && <Kitchen3D mood={lightingMood} doorsOpen={doorsOpen} cameraAngle={cameraAngle} cameraResetKey={cameraResetKey} onRegisterWideCapture={registerWideCapture} />}
           {view === "2d" && <FloorPlan />}
           {view === "materials" && <MaterialStudio design={design} countertopRatePerSqFt={quote.countertopRatePerSqFt} handleUpgrade={quote.handleUpgrade} onTryIn3D={() => { setView("3d"); setStep(4); }} />}
 
@@ -687,7 +696,144 @@ function DesignPageContent({ queryString }: { queryString: string }) {
       </div>
       <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-between border-t border-[#D8D5CD] bg-white p-3 lg:hidden"><button onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0} className="flex items-center gap-2 px-3"><ArrowLeft size={16} /> Back</button><span className="py-2 text-xs">{step + 1} / 7</span><button onClick={() => setStep(Math.min(6, step + 1))} disabled={step === 6} className="flex items-center gap-2 px-3">Next <ArrowRight size={16} /></button></div>
       {saved && <div className="fixed bottom-20 right-5 z-50 bg-[#292A27] px-5 py-3 text-sm text-white lg:bottom-5">Draft saved</div>}
-      {renderOpen && <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-labelledby="render-studio-title"><div className="max-h-[92vh] w-full max-w-5xl overflow-auto bg-[#F7F5F0] p-5 md:p-7"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] uppercase tracking-[0.24em] text-[#77796F]">Cabinet Studio · Architectural preview</p><h2 id="render-studio-title" className="mt-1 font-serif text-3xl">Render Studio View</h2><p className="mt-2 text-sm text-[#77796F]">{activePreset?.name ?? "Custom kitchen"} · {design.layout.toUpperCase()} · {design.doorStyle} · {design.colour} · {design.countertop} · {formatINR(quote.grandTotal)}</p></div><button onClick={() => setRenderOpen(false)} aria-label="Close render preview" className="grid h-9 w-9 place-items-center border border-[#D8D5CD]"><X size={18} /></button></div><div className="relative mt-5 aspect-[16/8] overflow-hidden bg-[#dedbd3]">{aiRenderImage ? <Image src={aiRenderImage} alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"} fill unoptimized sizes="(max-width: 768px) 100vw, 900px" className="object-cover" /> : <div className="absolute inset-0 grid place-items-center bg-[#E9E1D5] p-8 text-center text-sm text-[#6D6F68]">{renderLoading ? <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview…</span> : "Create a preview to compare it with your live 3D model."}</div>}{renderSnapshot && <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - renderSplit}% 0 0)` }}><Image src={renderSnapshot} alt="Captured live 3D CAD kitchen model" fill unoptimized sizes="(max-width: 768px) 100vw, 900px" className="object-cover" /></div>}{aiRenderImage && <><div className="absolute inset-y-0 w-0.5 bg-white shadow" style={{ left: `${renderSplit}%` }} /><span className="absolute right-3 top-3 bg-[#292A27]/85 px-3 py-2 text-[10px] text-white">{renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}</span></>}<span className="absolute left-3 top-3 bg-[#292A27]/85 px-3 py-2 text-[10px] text-white">LIVE 3D CAD MODEL</span></div><div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center"><label className="text-xs font-semibold uppercase tracking-wider">Before / after comparison<div className="mt-2 flex items-center gap-3"><span>3D</span><input type="range" min="0" max="100" value={renderSplit} onChange={(event) => setRenderSplit(Number(event.target.value))} className="w-full accent-[#694A36]" /><span>Preview</span></div></label><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeRenderInQuote} onChange={(event) => setIncludeRenderInQuote(event.target.checked)} /> Include render in PDF</label></div><div className="mt-5 flex flex-wrap gap-3"><button onClick={() => void generateStudioRender()} disabled={renderLoading} className="inline-flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs disabled:opacity-50"><Camera size={14} /> {renderLoading ? "Rendering…" : "Regenerate Render"}</button><button onClick={saveRenderToDesign} disabled={!aiRenderImage} className="bg-[#292A27] px-4 py-3 text-xs text-white disabled:opacity-50">Save Render to Design & PDF Quote</button></div><p className="mt-4 text-xs leading-5 text-[#77796F]">{status || "Cloudflare Workers AI renders may differ slightly from the live 3D model. Curated previews are shown if rendering is unavailable."}</p></div></div>}
+      {renderOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-black/60 p-3 sm:p-4" role="dialog" aria-modal="true" aria-labelledby="render-studio-title">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-auto bg-[#F7F5F0] p-4 sm:p-5 md:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-[#77796F]">Cabinet Studio · Architectural preview</p>
+                <h2 id="render-studio-title" className="mt-1 font-serif text-2xl sm:text-3xl">Render Studio View</h2>
+                <p className="mt-2 text-xs sm:text-sm text-[#77796F]">{activePreset?.name ?? "Custom kitchen"} · {design.layout.toUpperCase()} · {design.doorStyle} · {design.colour} · {design.countertop} · {formatINR(quote.grandTotal)}</p>
+              </div>
+              <button onClick={() => setRenderOpen(false)} aria-label="Close render preview" className="grid h-9 w-9 shrink-0 place-items-center border border-[#D8D5CD]"><X size={18} /></button>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-[#D8D5CD] pb-3">
+              <div role="tablist" aria-label="Render view mode" className="flex bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={renderTab === "full"}
+                  onClick={() => setRenderTab("full")}
+                  className={`px-3 py-1.5 text-xs font-medium ${renderTab === "full" ? "bg-[#292A27] text-white" : "text-[#6D6F68] hover:text-[#292A27]"}`}
+                >
+                  Full Render View
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={renderTab === "compare"}
+                  onClick={() => setRenderTab("compare")}
+                  className={`px-3 py-1.5 text-xs font-medium ${renderTab === "compare" ? "bg-[#292A27] text-white" : "text-[#6D6F68] hover:text-[#292A27]"}`}
+                >
+                  3D vs Render Compare
+                </button>
+              </div>
+
+              {aiRenderImage && (
+                <button
+                  type="button"
+                  onClick={() => setLightboxOpen(true)}
+                  className="inline-flex items-center gap-2 border border-[#292A27] bg-white px-3 py-2 text-xs font-medium text-[#292A27] hover:bg-[#EFECE4]"
+                >
+                  <ZoomIn size={14} /> Expand Fullscreen &amp; Zoom
+                </button>
+              )}
+            </div>
+
+            {renderTab === "full" ? (
+              <div className="relative mt-4 flex aspect-[4/3] max-h-[58vh] w-full items-center justify-center overflow-hidden bg-[#dedbd3] sm:aspect-[16/10]">
+                {aiRenderImage ? (
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(true)}
+                    aria-label="Open full-screen zoomable architectural render"
+                    className="group relative h-full w-full cursor-zoom-in"
+                  >
+                    <Image
+                      src={aiRenderImage}
+                      alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+                      fill
+                      unoptimized
+                      sizes="(max-width: 768px) 100vw, 960px"
+                      className="object-contain"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">
+                      {renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}
+                    </span>
+                    <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white opacity-95 transition group-hover:bg-[#292A27]">
+                      <ZoomIn size={12} /> Tap or click to zoom
+                    </span>
+                  </button>
+                ) : (
+                  <div className="grid h-full w-full place-items-center bg-[#E9E1D5] p-6 text-center text-sm text-[#6D6F68]">
+                    {renderLoading ? (
+                      <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview from full-room framing…</span>
+                    ) : (
+                      "Create a preview to view your full architectural kitchen render."
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="relative mt-4 aspect-[4/3] max-h-[58vh] w-full overflow-hidden bg-[#dedbd3] sm:aspect-[16/10]">
+                  {aiRenderImage ? (
+                    <Image
+                      src={aiRenderImage}
+                      alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+                      fill
+                      unoptimized
+                      sizes="(max-width: 768px) 100vw, 960px"
+                      onClick={() => setLightboxOpen(true)}
+                      className="cursor-zoom-in object-contain"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 grid place-items-center bg-[#E9E1D5] p-8 text-center text-sm text-[#6D6F68]">
+                      {renderLoading ? <span className="flex items-center gap-2"><LoaderCircle size={18} className="animate-spin" /> Creating an architectural kitchen preview…</span> : "Create a preview to compare it with your live 3D model."}
+                    </div>
+                  )}
+                  {renderSnapshot && (
+                    <div className="pointer-events-none absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 ${100 - renderSplit}% 0 0)` }}>
+                      <Image src={renderSnapshot} alt="Captured live 3D CAD kitchen model" fill unoptimized sizes="(max-width: 768px) 100vw, 960px" className="object-contain" />
+                    </div>
+                  )}
+                  {aiRenderImage && (
+                    <>
+                      <div className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow" style={{ left: `${renderSplit}%` }} />
+                      <span className="pointer-events-none absolute right-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">{renderSource === "curated-fallback" ? "CURATED KITCHEN PREVIEW" : "CLOUDFLARE AI RENDER"}</span>
+                    </>
+                  )}
+                  <span className="pointer-events-none absolute left-3 top-3 bg-[#292A27]/85 px-2.5 py-1.5 text-[10px] text-white">LIVE 3D CAD MODEL</span>
+                </div>
+                <div className="mt-4">
+                  <label className="text-xs font-semibold uppercase tracking-wider">Before / after comparison
+                    <div className="mt-2 flex items-center gap-3"><span>3D</span><input type="range" min="0" max="100" value={renderSplit} onChange={(event) => setRenderSplit(Number(event.target.value))} className="w-full accent-[#694A36]" /><span>Preview</span></div>
+                  </label>
+                </div>
+              </>
+            )}
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={includeRenderInQuote} onChange={(event) => setIncludeRenderInQuote(event.target.checked)} /> Include render in PDF</label>
+              <div className="flex flex-wrap gap-3">
+                <button onClick={() => void generateStudioRender()} disabled={renderLoading} className="inline-flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs disabled:opacity-50"><Camera size={14} /> {renderLoading ? "Rendering…" : "Regenerate Render"}</button>
+                <button onClick={saveRenderToDesign} disabled={!aiRenderImage} className="bg-[#292A27] px-4 py-3 text-xs text-white disabled:opacity-50">Save Render to Design &amp; PDF Quote</button>
+              </div>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-[#77796F]">{status || "Cloudflare Workers AI renders may differ slightly from the live 3D model. Curated previews are shown if rendering is unavailable."}</p>
+          </div>
+        </div>
+      )}
+      {lightboxOpen && aiRenderImage && (
+        <RenderLightbox
+          open={lightboxOpen}
+          imageSrc={aiRenderImage}
+          alt={renderSource === "curated-fallback" ? "Curated architectural kitchen preview" : "Cloudflare AI architectural render based on the current kitchen design"}
+          title={`${activePreset?.name ?? "Custom kitchen"} · ${design.layout.toUpperCase()} Architectural Render`}
+          onClose={() => setLightboxOpen(false)}
+        />
+      )}
     </main>
   );
 }

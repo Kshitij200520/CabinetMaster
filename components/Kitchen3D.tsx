@@ -4,10 +4,10 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Environment, OrbitControls } from "@react-three/drei";
 import { useDesignStore } from "@/store/design";
 import { colourValue } from "@/lib/catalog";
-import { getCameraPreset } from "@/lib/camera";
+import { getCameraPreset, computeWideKitchenFraming } from "@/lib/camera";
 import { Cabinet as CabinetModel, CameraAngle, KitchenDesign, LightingMood } from "@/lib/types";
 import { createSurfaceTexture, getCabinetTextureKind, getCountertopTextureKind, getHardwareTextureKind, SurfaceTextureKind } from "@/lib/surfaceTextures";
-import { FrontSide, MathUtils, type CanvasTexture, type Group } from "three";
+import { FrontSide, MathUtils, PerspectiveCamera, type CanvasTexture, type Group } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { Suspense, useEffect, useMemo, useRef, type RefObject } from "react";
 
@@ -303,7 +303,77 @@ function CameraPreset({ preset, resetKey, controlsRef }: {
   return null;
 }
 
-function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, doorsOpen, cameraAngle, cameraResetKey }: {
+function WideCaptureBridge({
+  onRegisterWideCapture,
+  controlsRef,
+  roomLength,
+  roomWidth,
+  wallHeight,
+  ceilingHeight,
+  cabinets,
+}: {
+  onRegisterWideCapture?: (capture: (() => string) | null) => void;
+  controlsRef: RefObject<OrbitControlsImpl | null>;
+  roomLength: number;
+  roomWidth: number;
+  wallHeight: number;
+  ceilingHeight: number;
+  cabinets: CabinetModel[];
+}) {
+  const { gl, scene, camera } = useThree();
+
+  useEffect(() => {
+    if (!onRegisterWideCapture) return;
+    onRegisterWideCapture(() => {
+      const controls = controlsRef.current;
+      const prevPos = camera.position.clone();
+      const prevQuat = camera.quaternion.clone();
+      const prevTarget = controls ? controls.target.clone() : null;
+      const prevDamping = controls ? controls.enableDamping : false;
+
+      const aspect = gl.domElement.clientWidth / Math.max(1, gl.domElement.clientHeight);
+      const fovDeg = camera instanceof PerspectiveCamera ? camera.fov : 42;
+      const framing = computeWideKitchenFraming({
+        roomLength,
+        roomWidth,
+        wallHeight,
+        ceilingHeight,
+        cabinets,
+        fovDeg,
+        aspect,
+      });
+
+      if (controls) controls.enableDamping = false;
+      camera.position.set(...framing.position);
+      if (controls) {
+        controls.target.set(...framing.target);
+        controls.update();
+      } else {
+        camera.lookAt(...framing.target);
+      }
+      camera.updateMatrixWorld(true);
+      gl.render(scene, camera);
+      const dataUrl = gl.domElement.toDataURL("image/jpeg", 0.9);
+
+      camera.position.copy(prevPos);
+      camera.quaternion.copy(prevQuat);
+      if (controls && prevTarget) {
+        controls.target.copy(prevTarget);
+        controls.update();
+        controls.enableDamping = prevDamping;
+      }
+      camera.updateMatrixWorld(true);
+      gl.render(scene, camera);
+
+      return dataUrl;
+    });
+    return () => onRegisterWideCapture(null);
+  }, [cabinets, camera, ceilingHeight, controlsRef, gl, onRegisterWideCapture, roomLength, roomWidth, scene, wallHeight]);
+
+  return null;
+}
+
+function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, doorsOpen, cameraAngle, cameraResetKey, onRegisterWideCapture }: {
   design: KitchenDesign;
   selectedCabinetId: string | null;
   setSelectedCabinetId: (id: string | null) => void;
@@ -311,6 +381,7 @@ function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, d
   doorsOpen: boolean;
   cameraAngle: CameraAngle;
   cameraResetKey: number;
+  onRegisterWideCapture?: (capture: (() => string) | null) => void;
 }) {
   const textures = useMemo<SceneTextures>(() => ({
     oak: createSurfaceTexture("oak"),
@@ -497,6 +568,15 @@ function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, d
         )}
 
         <CameraPreset preset={cameraPreset} resetKey={cameraResetKey} controlsRef={controlsRef} />
+        <WideCaptureBridge
+          onRegisterWideCapture={onRegisterWideCapture}
+          controlsRef={controlsRef}
+          roomLength={roomLength}
+          roomWidth={roomWidth}
+          wallHeight={wallHeight}
+          ceilingHeight={ceilingHeight}
+          cabinets={design.cabinetInventory}
+        />
         <OrbitControls ref={controlsRef} makeDefault enablePan enableZoom enableRotate minDistance={4} maxDistance={Math.max(roomLength, roomWidth) * 1.8} target={cameraPreset.target} />
         <ContactShadows position={[0, 0.01, 0]} opacity={0.32} scale={Math.max(roomLength, roomWidth) * 1.5} blur={2.4} far={6} />
       </Suspense>
@@ -504,11 +584,12 @@ function KitchenScene({ design, selectedCabinetId, setSelectedCabinetId, mood, d
   );
 }
 
-export default function Kitchen3D({ mood = "daylight", doorsOpen = false, cameraAngle = "perspective", cameraResetKey = 0 }: {
+export default function Kitchen3D({ mood = "daylight", doorsOpen = false, cameraAngle = "perspective", cameraResetKey = 0, onRegisterWideCapture }: {
   mood?: LightingMood;
   doorsOpen?: boolean;
   cameraAngle?: CameraAngle;
   cameraResetKey?: number;
+  onRegisterWideCapture?: (capture: (() => string) | null) => void;
 }) {
   const design = useDesignStore((state) => state.design);
   const selectedCabinetId = useDesignStore((state) => state.selectedCabinetId);
@@ -527,6 +608,7 @@ export default function Kitchen3D({ mood = "daylight", doorsOpen = false, camera
           doorsOpen={doorsOpen}
           cameraAngle={cameraAngle}
           cameraResetKey={cameraResetKey}
+          onRegisterWideCapture={onRegisterWideCapture}
         />
       </Canvas>
     </div>

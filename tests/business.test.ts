@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cabinetsOverlap, validateMeasurements, recommendCabinets } from "@/lib/recommendation";
 import { calculateQuote, cabinetUnitPrice } from "@/lib/pricing";
-import { getCameraPreset } from "@/lib/camera";
+import { getCameraPreset, computeWideKitchenFraming } from "@/lib/camera";
 import { KitchenDesign } from "@/lib/types";
 import { formatINR } from "@/lib/currency";
 import { kitchenDesignSchema } from "@/lib/validation";
@@ -33,6 +33,38 @@ describe("3D camera presets", () => {
     const top = getCameraPreset("top-floor-plan", 12, 10, 9);
     expect(top.position[1]).toBeCloseTo(13.8);
     expect(top.target).toEqual([0, 0, 0]);
+  });
+
+  it("frames the entire room bounding box across all layouts and aspect ratios", () => {
+    for (const layout of ["straight", "l", "u", "galley"] as const) {
+      const cabinets = recommendCabinets(layout, 144, 120, 96);
+      for (const aspect of [0.75, 1.33, 1.75]) {
+        const framing = computeWideKitchenFraming({
+          roomLength: 12,
+          roomWidth: 10,
+          wallHeight: 8,
+          ceilingHeight: 9,
+          cabinets,
+          fovDeg: 42,
+          aspect,
+        });
+        expect(framing.position[0]).toBeCloseTo(0, 1);
+        expect(framing.position[1]).toBeLessThan(9);
+        expect(framing.position[2]).toBeGreaterThan(5);
+        if (aspect < 1) {
+          const desktopFraming = computeWideKitchenFraming({
+            roomLength: 12,
+            roomWidth: 10,
+            wallHeight: 8,
+            ceilingHeight: 9,
+            cabinets,
+            fovDeg: 42,
+            aspect: 1.6,
+          });
+          expect(framing.position[2]).toBeGreaterThan(desktopFraming.position[2]);
+        }
+      }
+    }
   });
 });
 
