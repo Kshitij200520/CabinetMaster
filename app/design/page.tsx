@@ -140,6 +140,10 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const [productRates, setProductRates] = useState<Partial<Record<Cabinet["category"], number>>>({});
   const measurementsRef = useRef(design.measurements);
   const wideCaptureRef = useRef<(() => string) | null>(null);
+  const quoteFormSectionRef = useRef<HTMLDivElement | null>(null);
+  const quoteHighlightTimerRef = useRef<number | null>(null);
+  const [quoteHighlighted, setQuoteHighlighted] = useState(false);
+  const [quoteFocusSeq, setQuoteFocusSeq] = useState(0);
   const registerWideCapture = useCallback((fn: (() => string) | null) => {
     wideCaptureRef.current = fn;
   }, []);
@@ -532,10 +536,29 @@ function DesignPageContent({ queryString }: { queryString: string }) {
     setCabinetStatus("AI Studio Advisor recommendations applied to the live model.");
   };
 
+  useEffect(() => {
+    if (quoteFocusSeq === 0 || step !== 6) return;
+    const frame = window.requestAnimationFrame(() => {
+      const section = quoteFormSectionRef.current ?? document.getElementById("quote-form-section");
+      if (!section) return;
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      section.querySelector<HTMLInputElement>('input[name="name"]')?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [quoteFocusSeq, step]);
+
+  useEffect(() => () => {
+    if (quoteHighlightTimerRef.current) window.clearTimeout(quoteHighlightTimerRef.current);
+  }, []);
+
   const downloadQuote = async () => {
     if (!submission) {
       setStep(6);
       setStatus("Complete the customer details to create a server-verified quote and download its PDF.");
+      setQuoteHighlighted(true);
+      if (quoteHighlightTimerRef.current) window.clearTimeout(quoteHighlightTimerRef.current);
+      quoteHighlightTimerRef.current = window.setTimeout(() => setQuoteHighlighted(false), 1200);
+      setQuoteFocusSeq((seq) => seq + 1);
       return;
     }
     try { await downloadQuotePdf(submission, includeRenderInQuote); }
@@ -561,7 +584,44 @@ function DesignPageContent({ queryString }: { queryString: string }) {
           {step === 3 && <><p className="eyebrow">04 / Materials</p><h1 className="mt-3 font-serif text-3xl">Compose finishes.</h1><div className="mt-5"><p className="mb-2 text-xs font-semibold uppercase">Cabinet colour</p><div className="grid grid-cols-4 gap-2">{cabinetColours.map(([name, value]) => <button title={name} key={name} onClick={() => setDesign({ colour: name, colourHex: undefined })} className={`h-10 border-2 ${design.colour === name ? "border-[#292A27]" : "border-transparent"}`} style={{ background: value }} />)}</div></div><label className="mt-5 block text-xs font-semibold uppercase">Finish<select value={design.finish} onChange={(e) => setDesign({ finish: e.target.value })} className="mt-2 w-full border border-[#D8D5CD] bg-white p-3">{finishes.map((x) => <option key={x}>{x}</option>)}</select></label><label className="mt-4 block text-xs font-semibold uppercase">Handles<select value={design.handle} onChange={(e) => setDesign({ handle: e.target.value })} className="mt-2 w-full border border-[#D8D5CD] bg-white p-3">{handles.map((x) => <option key={x}>{x}</option>)}</select></label><label className="mt-4 block text-xs font-semibold uppercase">Countertop<select value={design.countertop} onChange={(e) => setDesign({ countertop: e.target.value })} className="mt-2 w-full border border-[#D8D5CD] bg-white p-3">{countertops.map((x) => <option key={x}>{x}</option>)}</select></label><label className="mt-4 block text-xs font-semibold uppercase">Backsplash<select value={design.backsplash} onChange={(e) => setDesign({ backsplash: e.target.value })} className="mt-2 w-full border border-[#D8D5CD] bg-white p-3">{backsplashes.map((x) => <option key={x}>{x}</option>)}</select></label></>}
           {step === 4 && <><p className="eyebrow">05 / Visualizer</p><h1 className="mt-3 font-serif text-3xl">Experience the room.</h1><p className="mt-4 text-sm leading-6 text-[#77796F]">Inspect your layout, adjust the lighting mood and camera, or open doors to review the cabinet interiors.</p><div className="mt-5"><p className="mb-2 text-xs font-semibold uppercase">Lighting mood</p><div className="grid grid-cols-3 gap-1">{([["daylight","Daylight"],["warm-evening","Warm"],["under-cabinet-led","LED"]] as const).map(([mood,label]) => <button key={mood} onClick={() => setLightingMood(mood)} className={`border px-2 py-2 text-[10px] ${lightingMood === mood ? "border-[#292A27] bg-[#EFECE4]" : "border-[#D8D5CD]"}`}>{label}</button>)}</div></div><label className="mt-4 block text-xs font-semibold uppercase">Camera angle<select value={cameraAngle} onChange={(event) => setCameraAngle(event.target.value as CameraAngle)} className="mt-2 w-full border border-[#D8D5CD] bg-white p-3 text-sm"><option value="perspective">Perspective</option><option value="front-elevation">Front elevation</option><option value="top-floor-plan">Top floor plan</option><option value="close-up-hardware">Close-up hardware</option></select></label><button onClick={() => setDoorsOpen((open) => !open)} className="mt-4 w-full border border-[#D8D5CD] px-4 py-3 text-sm">{doorsOpen ? "Close doors" : "Open doors"}</button><label className="mt-5 block text-xs font-semibold uppercase">Room photo reference<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => handleRoomReference(event.target.files?.[0])} className="mt-2 block w-full text-xs normal-case file:mr-3 file:border-0 file:bg-[#EFECE4] file:px-3 file:py-2" /></label>{roomReference && <><Image src={roomReference} alt="Uploaded room reference" width={720} height={260} unoptimized className="mt-3 h-32 w-full object-cover" /><button onClick={() => void generate3DFromUploadedPhoto()} disabled={imageModelLoading} className="mt-3 flex w-full items-center justify-center gap-2 border border-[#292A27] px-4 py-3 text-xs disabled:opacity-50">{imageModelLoading ? <><LoaderCircle size={14} className="animate-spin" /> Building 3D model…</> : "Generate 3D Model from Photo"}</button></>}<div className="mt-7 border border-[#D8D5CD] bg-[#F7F5F0] p-4"><p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em]"><Sparkles size={14} /> AI Studio Advisor</p><label className="mt-4 block text-[10px] font-semibold uppercase tracking-wider">Describe your kitchen idea<textarea value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} maxLength={1200} placeholder="L-shaped sage kitchen with brass handles under ₹2.5 lakhs" className="mt-2 min-h-20 w-full border border-[#D8D5CD] bg-white p-3 text-sm font-normal normal-case" /></label><label className="mt-3 block text-[10px] font-semibold uppercase tracking-wider">Budget in INR<input type="number" min={50000} max={10000000} value={aiBudget} onChange={(event) => setAiBudget(event.target.value)} placeholder="250000" className="mt-2 w-full border border-[#D8D5CD] bg-white p-3 text-sm font-normal tabular-nums normal-case" /></label><button onClick={askAdvisor} disabled={aiLoading || aiPrompt.trim().length < 3} className="mt-4 flex w-full items-center justify-center gap-2 bg-[#292A27] px-4 py-3 text-xs text-white disabled:opacity-50">{aiLoading ? <><LoaderCircle size={14} className="animate-spin" /> Thinking…</> : "Get design recommendation"}</button>{recommendation && <div className="mt-4 border-t border-[#D8D5CD] pt-4"><p className="font-serif text-xl">{recommendation.layout.toUpperCase()} · {recommendation.doorStyle}</p><p className="mt-1 text-xs">{recommendation.colour} · {recommendation.finish} · {recommendation.countertop} · {recommendation.handle}</p><p className="mt-2 font-serif text-lg">{formatINR(recommendation.estimatedTotalINR)} {recommendation.withinBudget === null ? "indicative estimate" : recommendation.withinBudget ? "· Within budget" : "· Above budget"}</p><ul className="mt-3 list-disc space-y-1 pl-4 text-[10px] leading-5 text-[#6D6F68]">{recommendation.tips.map((tip) => <li key={tip}>{tip}</li>)}</ul><button onClick={applyRecommendation} className="mt-4 w-full border border-[#292A27] px-4 py-3 text-xs">Apply AI Design · {recommendation.cabinets.length} cabinets</button></div>}</div></>}
           {step === 5 && <><p className="eyebrow">06 / Cabinet configuration</p><h1 className="mt-3 font-serif text-3xl">Refine the inventory.</h1><button onClick={handleAddCabinet} className="mt-5 flex w-full items-center justify-center gap-2 bg-[#292A27] py-3 text-sm text-white"><Plus size={16} /> Add cabinet</button>{cabinetStatus && <p role="status" className="mt-2 text-xs text-[#77796F]">{cabinetStatus}</p>}<div className="mt-4 max-h-[520px] space-y-2 overflow-auto">{design.cabinetInventory.map((item) => <button key={item.id} onClick={() => setSelectedCabinetId(item.id)} className={`w-full border p-3 text-left ${selectedCabinetId === item.id ? "border-[#292A27]" : "border-[#D8D5CD]"}`}><b className="text-sm">{item.name}</b><p className="mt-1 text-xs text-[#77796F]">{item.width}&quot; W × {item.height}&quot; H</p></button>)}</div></>}
-          {step === 6 && <><p className="eyebrow">07 / Quote</p><h1 className="mt-3 font-serif text-3xl">Request your estimate.</h1>{submission ? <div className="mt-6 border border-[#A4AA94] bg-[#EFECE4] p-5"><p className="text-xs font-semibold uppercase">Quote saved · {submission.status}</p><p className="mt-2 font-serif text-2xl">{submission.quoteNumber}</p><p className="mt-2 text-sm">{formatINR(submission.grandTotalINR)}</p><button onClick={downloadQuote} className="mt-4 flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs"><Download size={15} /> Download server-verified PDF</button><Link href="/dashboard" className="mt-4 block text-xs underline underline-offset-4">View in your dashboard</Link></div> : <form onSubmit={form.handleSubmit(submitQuote)} className="mt-5 space-y-3">{(["name","email","phone","city","pinCode"] as const).map((key) => <label key={key} className="block text-xs font-semibold uppercase">{key === "pinCode" ? "PIN Code" : key}<input {...form.register(key)} maxLength={key === "pinCode" ? 6 : undefined} inputMode={key === "pinCode" ? "numeric" : undefined} className="mt-1 w-full border border-[#D8D5CD] bg-[#F7F5F0] p-3 text-sm outline-none" /><span className="mt-1 block text-xs normal-case text-red-700">{form.formState.errors[key]?.message}</span></label>)}<button className="w-full bg-[#292A27] py-3 text-sm text-white">Create Final Quote & Download PDF</button></form>}<p className="mt-3 text-xs text-[#77796F]">{status}</p></>}
+          {step === 6 && (
+            <div
+              id="quote-form-section"
+              ref={quoteFormSectionRef}
+              className={`scroll-mt-20 pb-24 transition-shadow duration-300 lg:pb-0 ${
+                quoteHighlighted ? "rounded-sm ring-2 ring-[#B38B62]/60 ring-offset-8 ring-offset-white" : ""
+              }`}
+            >
+              <p className="eyebrow">07 / Quote</p>
+              <h1 className="mt-3 font-serif text-3xl">Request your estimate.</h1>
+              {submission ? (
+                <div className="mt-6 border border-[#A4AA94] bg-[#EFECE4] p-5">
+                  <p className="text-xs font-semibold uppercase">Quote saved · {submission.status}</p>
+                  <p className="mt-2 font-serif text-2xl">{submission.quoteNumber}</p>
+                  <p className="mt-2 text-sm">{formatINR(submission.grandTotalINR)}</p>
+                  <button onClick={downloadQuote} className="mt-4 flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs"><Download size={15} /> Download server-verified PDF</button>
+                  <Link href="/dashboard" className="mt-4 block text-xs underline underline-offset-4">View in your dashboard</Link>
+                </div>
+              ) : (
+                <form onSubmit={form.handleSubmit(submitQuote)} className="mt-5 space-y-3">
+                  {(["name","email","phone","city","pinCode"] as const).map((key) => (
+                    <label key={key} className="block text-xs font-semibold uppercase">
+                      {key === "pinCode" ? "PIN Code" : key}
+                      <input
+                        {...form.register(key)}
+                        maxLength={key === "pinCode" ? 6 : undefined}
+                        inputMode={key === "pinCode" ? "numeric" : undefined}
+                        className="mt-1 w-full border border-[#D8D5CD] bg-[#F7F5F0] p-3 text-sm outline-none"
+                      />
+                      <span className="mt-1 block text-xs normal-case text-red-700">{form.formState.errors[key]?.message}</span>
+                    </label>
+                  ))}
+                  <button className="w-full bg-[#292A27] py-3 text-sm text-white">Create Final Quote &amp; Download PDF</button>
+                </form>
+              )}
+              <p className="mt-3 text-xs text-[#77796F]">{status}</p>
+            </div>
+          )}
         </aside>
 
         <section
