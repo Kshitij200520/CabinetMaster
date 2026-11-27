@@ -7,7 +7,7 @@ import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Activity, ArrowLeft, ArrowRight, Camera, Download, Eye, Lightbulb, LoaderCircle, Maximize2, Moon, Plus, RotateCcw, Save, Sparkles, Sun, Trash2, X } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, Camera, ChevronDown, Download, Eye, Lightbulb, LoaderCircle, Maximize2, Moon, Plus, RotateCcw, Save, Sparkles, Sun, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import FloorPlan from "@/components/FloorPlan";
 import { useDesignStore } from "@/store/design";
@@ -119,6 +119,7 @@ function DesignPageContent({ queryString }: { queryString: string }) {
   const [includeRenderInQuote, setIncludeRenderInQuote] = useState(false);
   const [roomReference, setRoomReference] = useState("");
   const [referenceImage, setReferenceImage] = useState("");
+  const [referenceExpanded, setReferenceExpanded] = useState(false);
   const [imageModelLoading, setImageModelLoading] = useState(false);
   const [imageMatchNote, setImageMatchNote] = useState("");
   const [imageModelError, setImageModelError] = useState("");
@@ -514,15 +515,15 @@ function DesignPageContent({ queryString }: { queryString: string }) {
 
   const steps = ["Layout", "Measurements", "Cabinet Style", "Materials", "Visualizer", "Cabinets", "Quote"];
   return (
-    <main className="min-h-screen bg-[#F7F5F0]">
+    <main className="min-h-screen min-w-0 w-full bg-[#F7F5F0]">
       <header className="flex h-16 items-center justify-between border-b border-[#D8D5CD] px-4 md:px-8">
         <Link href="/" className="font-serif text-lg tracking-[0.14em]">CABINET STUDIO</Link>
         <div className="hidden items-center gap-1 md:flex">{steps.map((name, index) => <button key={name} onClick={() => setStep(index)} className={`px-3 py-2 text-xs ${index === step ? "border-b-2 border-[#292A27] font-semibold" : "text-[#77796F]"}`}>{index + 1}. {name}</button>)}</div>
         <button onClick={saveDesign} className="flex shrink-0 items-center gap-2 whitespace-nowrap px-2 text-sm"><Save size={16} /> Save</button>
       </header>
 
-      <div className="grid min-h-[calc(100vh-64px)] lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(280px,300px)]">
-        <aside className="border-b border-[#D8D5CD] bg-white p-5 lg:border-b-0 lg:border-r">
+      <div className="grid min-w-0 grid-cols-1 min-h-[calc(100vh-64px)] lg:grid-cols-[minmax(280px,320px)_minmax(0,1fr)_minmax(280px,300px)]">
+        <aside className="min-w-0 border-b border-[#D8D5CD] bg-white p-5 lg:border-b-0 lg:border-r">
           {step === 0 && <><p className="eyebrow">01 / Kitchen layout</p><h1 className="mt-3 font-serif text-3xl">Choose your shape.</h1><div className="mt-6 grid grid-cols-2 gap-3">{(["straight","l","u","galley"] as const).map((layout) => <button key={layout} onClick={() => setLayout(layout)} className={`border p-4 text-left ${design.layout === layout ? "border-[#292A27] bg-[#EFECE4]" : "border-[#D8D5CD]"}`}><div className="mb-4 h-16"><svg viewBox="0 0 100 70" className="h-full w-full"><rect x="10" y="18" width={layout === "straight" ? 80 : 58} height="12" fill="#292A27" /><path d={layout === "l" ? "M10 18V58H30V30" : layout === "u" ? "M10 18V58H30M68 18V58H48" : "M10 18V58M68 18V58"} fill="none" stroke="#292A27" strokeWidth="12" /></svg></div><b className="text-sm">{layout === "l" ? "L-Shaped" : layout === "u" ? "U-Shaped" : layout === "galley" ? "Galley" : "Straight"}</b></button>)}</div></>}
           {step === 1 && <><p className="eyebrow">02 / Measurements</p><h1 className="mt-3 font-serif text-3xl">Define the room.</h1><div className="mt-6 space-y-4">{([
             ["length","Kitchen length"],["width","Kitchen width"],["wallHeight","Wall height"],["ceilingHeight","Ceiling height"],
@@ -534,44 +535,84 @@ function DesignPageContent({ queryString }: { queryString: string }) {
           {step === 6 && <><p className="eyebrow">07 / Quote</p><h1 className="mt-3 font-serif text-3xl">Request your estimate.</h1>{submission ? <div className="mt-6 border border-[#A4AA94] bg-[#EFECE4] p-5"><p className="text-xs font-semibold uppercase">Quote saved · {submission.status}</p><p className="mt-2 font-serif text-2xl">{submission.quoteNumber}</p><p className="mt-2 text-sm">{formatINR(submission.grandTotalINR)}</p><button onClick={downloadQuote} className="mt-4 flex items-center gap-2 border border-[#292A27] px-4 py-3 text-xs"><Download size={15} /> Download server-verified PDF</button><Link href="/dashboard" className="mt-4 block text-xs underline underline-offset-4">View in your dashboard</Link></div> : <form onSubmit={form.handleSubmit(submitQuote)} className="mt-5 space-y-3">{(["name","email","phone","city","pinCode"] as const).map((key) => <label key={key} className="block text-xs font-semibold uppercase">{key === "pinCode" ? "PIN Code" : key}<input {...form.register(key)} maxLength={key === "pinCode" ? 6 : undefined} inputMode={key === "pinCode" ? "numeric" : undefined} className="mt-1 w-full border border-[#D8D5CD] bg-[#F7F5F0] p-3 text-sm outline-none" /><span className="mt-1 block text-xs normal-case text-red-700">{form.formState.errors[key]?.message}</span></label>)}<button className="w-full bg-[#292A27] py-3 text-sm text-white">Create Final Quote & Download PDF</button></form>}<p className="mt-3 text-xs text-[#77796F]">{status}</p></>}
         </aside>
 
-        <section id="kitchen-viewport" className="relative min-h-[420px] bg-[#EEECE4]">
-          <div className="absolute left-4 top-4 z-10 flex bg-white shadow-sm"><button onClick={() => setView("3d")} className={`px-4 py-2 text-xs ${view === "3d" ? "bg-[#292A27] text-white" : ""}`}>3D VIEW</button><button onClick={() => setView("2d")} className={`px-4 py-2 text-xs ${view === "2d" ? "bg-[#292A27] text-white" : ""}`}>2D PLAN</button><button onClick={() => setView("materials")} className={`px-4 py-2 text-xs ${view === "materials" ? "bg-[#292A27] text-white" : ""}`}>MATERIALS</button></div>
+        <section
+          id="kitchen-viewport"
+          className={`relative min-h-[420px] min-w-0 w-full bg-[#EEECE4] ${
+            view === "materials" ? "h-auto" : "h-[55vh] overflow-hidden lg:h-auto"
+          }`}
+        >
           {view === "3d" && <Kitchen3D mood={lightingMood} doorsOpen={doorsOpen} cameraAngle={cameraAngle} cameraResetKey={cameraResetKey} />}
           {view === "2d" && <FloorPlan />}
           {view === "materials" && <MaterialStudio design={design} countertopRatePerSqFt={quote.countertopRatePerSqFt} handleUpgrade={quote.handleUpgrade} onTryIn3D={() => { setView("3d"); setStep(4); }} />}
-          {view === "3d" && (
-            <div role="group" aria-label="Camera presets" className="absolute right-4 top-[3.6rem] z-10 grid grid-cols-2 gap-1 bg-white/90 p-1 shadow-sm">
-              {([
-                ["perspective", "Perspective"],
-                ["front-elevation", "Front Elevation"],
-                ["top-floor-plan", "Top View"],
-              ] as const).map(([angle, label]) => (
-                <button
-                  key={angle}
-                  type="button"
-                  aria-pressed={cameraAngle === angle}
-                  onClick={() => changeCameraAngle(angle)}
-                  className={`px-3 py-2 text-[10px] ${cameraAngle === angle ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}
-                >
-                  {label}
-                </button>
-              ))}
-              <button type="button" onClick={resetCamera} className="col-span-2 flex items-center justify-center gap-1 px-3 py-2 text-[10px] hover:bg-[#EFECE4]">
-                <RotateCcw size={12} /> Reset Camera
-              </button>
-            </div>
-          )}
-          {view === "3d" && imageMatchNote && referenceImage && (
-            <div className="absolute left-4 top-[3.6rem] z-10 flex max-w-[230px] items-center gap-3 border border-white/60 bg-white/95 p-2 shadow-sm" title={imageMatchNote}>
-              <div className="relative h-12 w-14 shrink-0 overflow-hidden bg-[#E9E1D5]">
-                <Image src={referenceImage} alt="Kitchen reference used for this 3D model" fill unoptimized sizes="56px" className="object-cover" />
+
+          <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col gap-2 md:inset-x-4 md:top-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="pointer-events-auto flex bg-white shadow-sm">
+                <button onClick={() => setView("3d")} className={`px-2.5 py-1.5 text-[11px] sm:text-xs md:px-4 md:py-2 ${view === "3d" ? "bg-[#292A27] text-white" : ""}`}>3D VIEW</button>
+                <button onClick={() => setView("2d")} className={`px-2.5 py-1.5 text-[11px] sm:text-xs md:px-4 md:py-2 ${view === "2d" ? "bg-[#292A27] text-white" : ""}`}>2D PLAN</button>
+                <button onClick={() => setView("materials")} className={`px-2.5 py-1.5 text-[11px] sm:text-xs md:px-4 md:py-2 ${view === "materials" ? "bg-[#292A27] text-white" : ""}`}>MATERIALS</button>
               </div>
-              <div><p className="text-[9px] font-semibold uppercase leading-4 tracking-[0.1em]">Matched from<br />Reference Image</p><p className="mt-1 text-[9px] text-[#77796F]">{imageMatchNote}</p></div>
+              {view === "3d" && (
+                <>
+                  <div role="group" aria-label="Camera presets" className="pointer-events-auto flex items-center bg-white/90 p-0.5 shadow-sm md:hidden">
+                    <button type="button" aria-label="Perspective camera" title="Perspective" aria-pressed={cameraAngle === "perspective"} onClick={() => changeCameraAngle("perspective")} className={`px-1.5 py-1 text-[10px] ${cameraAngle === "perspective" ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}>3D</button>
+                    <button type="button" aria-label="Front elevation camera" title="Front Elevation" aria-pressed={cameraAngle === "front-elevation"} onClick={() => changeCameraAngle("front-elevation")} className={`px-1.5 py-1 text-[10px] ${cameraAngle === "front-elevation" ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}>Front</button>
+                    <button type="button" aria-label="Top view camera" title="Top View" aria-pressed={cameraAngle === "top-floor-plan"} onClick={() => changeCameraAngle("top-floor-plan")} className={`px-1.5 py-1 text-[10px] ${cameraAngle === "top-floor-plan" ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}>Top</button>
+                    <button type="button" aria-label="Reset camera" title="Reset Camera" onClick={resetCamera} className="grid h-6 w-6 shrink-0 place-items-center hover:bg-[#EFECE4]"><RotateCcw size={11} /></button>
+                  </div>
+                  <div className="pointer-events-auto hidden rounded-full border border-white/60 bg-white/90 px-3 py-1.5 text-xs shadow-sm md:block xl:px-4 xl:py-2" title={workTriangle.tip}>
+                    <span className="inline-flex items-center gap-1.5 xl:gap-2">
+                      <Activity size={14} /> Work Triangle: <b>{workTriangle.score}/100</b>
+                      <span className="hidden xl:inline">{workTriangle.status}</span>
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
-          )}
-          {imageModelError && !imageModelLoading && (
-            <div role="status" className="absolute left-4 top-4 z-20 max-w-[min(90%,420px)] border border-red-200 bg-white/95 px-4 py-3 text-xs text-red-800 shadow-sm">{imageModelError}</div>
-          )}
+
+            {view === "3d" && (
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="flex flex-col items-start gap-2">
+                  <div className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-white/90 px-2.5 py-1 text-[10px] shadow-sm md:hidden" title={workTriangle.tip} aria-label={`Work triangle score ${workTriangle.score} out of 100`}>
+                    <Activity size={12} /><b>{workTriangle.score}/100</b>
+                  </div>
+                  {imageMatchNote && referenceImage && (
+                    <div className="pointer-events-auto hidden max-w-[230px] items-center gap-3 border border-white/60 bg-white/95 p-2 shadow-sm md:flex" title={imageMatchNote}>
+                      <div className="relative h-12 w-14 shrink-0 overflow-hidden bg-[#E9E1D5]">
+                        <Image src={referenceImage} alt="Kitchen reference used for this 3D model" fill unoptimized sizes="56px" className="object-cover" />
+                      </div>
+                      <div><p className="text-[9px] font-semibold uppercase leading-4 tracking-[0.1em]">Matched from<br />Reference Image</p><p className="mt-1 text-[9px] text-[#77796F]">{imageMatchNote}</p></div>
+                    </div>
+                  )}
+                </div>
+                <div role="group" aria-label="Camera presets" className="pointer-events-auto ml-auto hidden grid-cols-2 gap-1 bg-white/90 p-1 shadow-sm md:grid">
+                  {([
+                    ["perspective", "Perspective"],
+                    ["front-elevation", "Front Elevation"],
+                    ["top-floor-plan", "Top View"],
+                  ] as const).map(([angle, label]) => (
+                    <button
+                      key={angle}
+                      type="button"
+                      aria-pressed={cameraAngle === angle}
+                      onClick={() => changeCameraAngle(angle)}
+                      className={`px-3 py-2 text-[10px] ${cameraAngle === angle ? "bg-[#292A27] text-white" : "hover:bg-[#EFECE4]"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  <button type="button" onClick={resetCamera} className="col-span-2 flex items-center justify-center gap-1 px-3 py-2 text-[10px] hover:bg-[#EFECE4]">
+                    <RotateCcw size={12} /> Reset Camera
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {imageModelError && !imageModelLoading && (
+              <div role="status" className="pointer-events-auto self-start max-w-[min(100%,420px)] border border-red-200 bg-white/95 px-4 py-3 text-xs text-red-800 shadow-sm">{imageModelError}</div>
+            )}
+          </div>
+
           {imageModelLoading && (
             <div className="absolute inset-0 z-30 grid place-items-center bg-[#F7F5F0]/85 p-6 text-center backdrop-blur-sm">
               <div className="flex items-center gap-3 bg-white px-5 py-4 text-sm shadow">
@@ -580,14 +621,61 @@ function DesignPageContent({ queryString }: { queryString: string }) {
               </div>
             </div>
           )}
-          {view === "3d" && <>
-            <div className="absolute right-4 top-4 z-10 rounded-full border border-white/60 bg-white/90 px-4 py-2 text-xs shadow-sm" title={workTriangle.tip}><span className="inline-flex items-center gap-2"><Activity size={14} /> Work Triangle: <b>{workTriangle.score}/100</b> {workTriangle.status}</span></div>
-            <div className="absolute bottom-4 left-4 z-10 hidden gap-1 rounded bg-white/90 p-1 shadow-sm sm:flex">{([["daylight","Daylight",Sun],["warm-evening","Warm",Moon],["under-cabinet-led","LED",Lightbulb]] as const).map(([mood,label,Icon]) => <button key={mood} onClick={() => setLightingMood(mood)} aria-pressed={lightingMood === mood} title={`${label} lighting`} className={`flex items-center gap-1 px-2 py-2 text-[10px] ${lightingMood === mood ? "bg-[#292A27] text-white" : ""}`}><Icon size={13} />{label}</button>)}</div>
-          </>}
-          <div className="absolute bottom-4 right-4 z-10 flex flex-wrap justify-end gap-2"><button onClick={() => setDoorsOpen((open) => !open)} className="flex items-center gap-2 bg-white px-3 py-2 text-xs shadow-sm" title="Inspect cabinet interiors"><Eye size={15} />{doorsOpen ? "Close doors" : "Open doors"}</button><button onClick={openRenderStudio} className="flex items-center gap-2 bg-[#292A27] px-3 py-2 text-xs text-white shadow-sm"><Camera size={15} /> Render Studio View</button><button onClick={resetCamera} className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Reset camera angle and orbit controls" aria-label="Reset camera angle and orbit controls"><RotateCcw size={16} /></button><button className="grid h-9 w-9 place-items-center bg-white shadow-sm" title="Fullscreen" onClick={() => document.documentElement.requestFullscreen()}><Maximize2 size={16} /></button></div>
+
+          {view !== "materials" && (
+            <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2 md:inset-x-4 md:bottom-4">
+              {view === "3d" && imageMatchNote && referenceImage && (
+                <div className="pointer-events-auto self-start max-w-[min(100%,300px)] border border-white/60 bg-white/95 p-1 shadow-sm md:hidden">
+                  <div className="flex items-center gap-2">
+                    <div className="relative h-9 w-9 shrink-0 overflow-hidden bg-[#E9E1D5]">
+                      <Image src={referenceImage} alt="Kitchen reference used for this 3D model" fill unoptimized sizes="36px" className="object-cover" />
+                    </div>
+                    <span className="whitespace-nowrap text-[10px] font-medium">Ref Image</span>
+                    <button
+                      type="button"
+                      aria-label={referenceExpanded ? "Hide reference details" : "Show reference details"}
+                      aria-expanded={referenceExpanded}
+                      onClick={() => setReferenceExpanded((expanded) => !expanded)}
+                      className="grid h-7 w-7 place-items-center"
+                    >
+                      <ChevronDown size={14} className={`transition-transform ${referenceExpanded ? "rotate-180" : ""}`} />
+                    </button>
+                  </div>
+                  {referenceExpanded && <p className="max-w-[260px] px-2 pb-2 text-[10px] leading-4 text-[#77796F]">{imageMatchNote}</p>}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                {view === "3d" ? (
+                  <div className="pointer-events-auto hidden gap-1 rounded bg-white/90 p-1 shadow-sm sm:flex">
+                    {([["daylight","Daylight",Sun],["warm-evening","Warm",Moon],["under-cabinet-led","LED",Lightbulb]] as const).map(([mood,label,Icon]) => (
+                      <button key={mood} onClick={() => setLightingMood(mood)} aria-pressed={lightingMood === mood} title={`${label} lighting`} className={`flex items-center gap-1 px-2 py-2 text-[10px] ${lightingMood === mood ? "bg-[#292A27] text-white" : ""}`}>
+                        <Icon size={13} />{label}
+                      </button>
+                    ))}
+                  </div>
+                ) : <div />}
+
+                <div className="pointer-events-auto ml-auto flex max-w-full flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+                  <button onClick={() => setDoorsOpen((open) => !open)} className="flex items-center gap-1.5 bg-white px-2.5 py-2 text-[11px] shadow-sm sm:gap-2 sm:px-3 sm:text-xs" title="Inspect cabinet interiors">
+                    <Eye size={14} />{doorsOpen ? "Close doors" : "Open doors"}
+                  </button>
+                  <button onClick={openRenderStudio} className="flex items-center gap-1.5 bg-[#292A27] px-2.5 py-2 text-[11px] text-white shadow-sm sm:gap-2 sm:px-3 sm:text-xs">
+                    <Camera size={14} /> Render Studio View
+                  </button>
+                  <button onClick={resetCamera} className="hidden h-9 w-9 place-items-center bg-white shadow-sm md:grid" title="Reset camera angle and orbit controls" aria-label="Reset camera angle and orbit controls">
+                    <RotateCcw size={16} />
+                  </button>
+                  <button className="grid h-8 w-8 place-items-center bg-white shadow-sm sm:h-9 sm:w-9" title="Fullscreen" aria-label="Fullscreen" onClick={() => document.documentElement.requestFullscreen()}>
+                    <Maximize2 size={15} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
-        <aside className="min-w-0 overflow-x-hidden border-t border-[#D8D5CD] bg-white px-5 py-5 lg:border-l lg:border-t-0">
+        <aside className="min-w-0 overflow-x-hidden border-t border-[#D8D5CD] bg-white px-5 py-5 pb-24 lg:border-l lg:border-t-0 lg:pb-5">
           {selectedCabinet ? <div className="mb-5 border-b border-[#D8D5CD] pb-5"><p className="text-xs uppercase tracking-wider text-[#77796F]">Selected cabinet</p><h2 className="mt-2 font-serif text-xl">{selectedCabinet.name}</h2><p className="mt-2 text-sm">{selectedCabinet.width}&quot; × {selectedCabinet.height}&quot; × {selectedCabinet.depth}&quot;</p><label className="mt-3 block text-xs">Width<input type="number" value={selectedCabinet.width} onChange={(e) => updateCabinet(selectedCabinet.id, { width: Number(e.target.value) })} className="mt-1 w-full border border-[#D8D5CD] p-2" /></label><button onClick={() => removeCabinet(selectedCabinet.id)} className="mt-3 flex items-center gap-2 text-xs text-red-700"><Trash2 size={14} /> Remove cabinet</button></div> : null}
           <p className="text-xs font-semibold uppercase tracking-[0.18em]">Live estimate</p><h2 className="mt-3 whitespace-nowrap font-serif text-3xl tabular-nums">{formatINR(quote.grandTotal)}</h2>
           <div className="mt-5 space-y-3 border-t border-[#D8D5CD] pt-4">{quote.cabinetRows.slice(0,5).map((row, index) => <div key={`${row.sku}-${index}`} className="flex min-w-0 items-center justify-between gap-2 text-sm tabular-nums"><span className="min-w-0 truncate">{row.quantity} × {row.name}</span><b className="shrink-0 whitespace-nowrap">{formatINR(row.lineTotal)}</b></div>)}</div>
